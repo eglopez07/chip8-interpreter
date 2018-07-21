@@ -30,6 +30,8 @@ public:
 		// Reset timers
 		delay_timer = 0;
 		sound_timer = 0;
+
+		srand(time(NULL));
 	}
 	
 	void chip8::loadGame(char *gameTitle) {
@@ -37,7 +39,7 @@ public:
 		// Load game file
 		char buffer[BUFSIZ];
 		FILE *gameFile;
-		gameFile = fopen (gameTitle, "rb");
+		gameFile = fopen(gameTitle, "rb");
 		
 		for(int i = 0; i < BUFSIZ; ++i)
 			memory[i + 512] = buffer[i];
@@ -113,6 +115,7 @@ public:
 				// Skip next instruction if V[X] equals V[Y]
 				if (V[(opcode & 0x0F00) >> 8] == V[(opcode & 0x00F0) >> 4]) {
 					// Skip next instruction
+					pc += 2;
 				}
 				pc += 2;
 			break;
@@ -140,41 +143,77 @@ public:
 					case 0x0001: // 8XY1
 						// Set V[X] to value of V[X]|V[Y]
 						V[(opcode & 0x0F00) >> 8] = V[(opcode & 0x0F00) >> 8] | V[(opcode & 0x00F0) >> 4];
+						pc += 2;
 					break;
 				
 					case 0x0002: // 8XY2
 						// Set V[X] to value of V[X]&V[Y]
+						V[(opcode & 0x0F00) >> 8] = V[(opcode & 0x0F00) >> 8] & V[(opcode & 0x00F0) >> 4];
+						pc += 2;
 					break;
 				
 					case 0x0003: // 8XY3
 						// Set V[X] to value of V[X]^V[Y]
+						V[(opcode & 0x0F00) >> 8] = V[(opcode & 0x0F00) >> 8] ^ V[(opcode & 0x00F0) >> 4];
+						pc += 2;
 					break;
 				
 					case 0x0004: // 8XY4
 						// Add V[Y] to V[X]. VF set to 1 when there's a carry, 0 otherwise
-						if (V[(opcode & 0x00F0) >> 4] > (0xFF - V[(opcode & 0x0F00) >> 8]))
+						if (V[(opcode & 0x00F0) >> 4] > (0xFF - V[(opcode & 0x0F00) >> 8])) {
 							V[0xF] = 1; // Carry Flag
-						else
+						}
+						else{
 							V[0xF] = 0;
-						
+						}
 						V[(opcode & 0x0F00) >> 8] += V[(opcode & 0x00F0) >> 4];
 						pc += 2;
 					break;
 				
 					case 0x0005: // 8XY5
 						// Subtract V[Y] from V[X]. VF set to 0 when there's a borrow, 1 otherwise
+						if(V[(opcode & 0x0F00) >> 8] > V[(opcode & 0x00F0) >> 4]) {
+							V[0xF] = 1;
+						}
+						else {
+							v[0xF] = 0;
+						}
+						V[(opcode & 0x0F00) >> 8] -= V[(opcode & 0x00F0) >> 4];
+						pc += 2;
 					break;
 				
 					case 0x0006: // 8XY6
 						// Shift V[Y] right by one and store value to V[X]. VF set to least significant bit of V[Y] before shift
+						V[(opcode & 0x0F00) >> 8] = V[(opcode & 0x00F0) >> 4] >> 1;
+						V[0xF] = V[(opcode & 0x00F0) >> 4] & 1; // LSB
+						pc += 2;
 					break;
 				
 					case 0x0007: // 8XY7
 						// Set V[X] to value of V[Y] minus V[X]. VF set to 0 when there's a borrow, 1 otherwise
+						if(V[(opcode & 0x00F0) >> 4] > V[(opcode & 0x0F00) >> 8]) {
+							V[0xF] = 1;
+						}
+						else {
+							v[0xF] = 0;
+						}
+						V[(opcode & 0x0F00) >> 8] = V[(opcode & 0x00F0) >> 4] - V[(opcode & 0x0F00) >> 8];
+						pc += 2;
 					break;
 				
 					case 0x000E: // 8XYE
 						// Shift V[Y] left by one and copy result to VX. VF set to most significant bit of V[Y] before shift
+						int MSB = 0;
+						unsigned char temp = V[(opcode & 0x00F0) >> 4];
+						for(int i = sizeof(char) * 8; i > 0; i--;) {
+							MSB = temp & 1;
+							
+							temp >>= 1;
+						}
+						V[0xF] = MSB;
+						V[(opcode & 0x00F0) >> 4] <<= 1;
+						V[(opcode & 0x0F00) >> 8] = V[(opcode & 0x00F0) >> 4];
+						pc += 2;
 					break;
 					
 					default:
@@ -184,6 +223,10 @@ public:
 			
 			case 0x9000: // 9XY0
 				// Skip next instruction if V[X] does not equal V[Y].
+				if (V[(opcode & 0x0F00) >> 8] != V[(opcode & 0x00F0) >> 4]) {
+					pc += 2;
+				}
+				pc += 2;
 			break;
 			
 			case 0xA000: // ANNN
@@ -194,10 +237,13 @@ public:
 				
 			case 0xB000: // BNNN
 				// Jump to address (NNN plus V0)
+				pc = V[0x0] + (opcode & 0x0FFF);
 			break;
 			
 			case 0xC000: // CXNN
 				// Set V[X] to result of a bitwise and operation on a random number and NN
+				V[(opcode & 0x0F00) >> 8] = (rand() % 256) & (opcode & 0x00FF);
+				pc += 2;
 			break;
 			
 			case 0xD000: // DXYN
@@ -226,6 +272,7 @@ public:
 					case 0x0007: // FX07
 						// Set V[X] to value of delay_timer
 						V[(opcode & 0x0F00) >> 8] = get_delay();
+						pc += 2;
 					break;
 			
 					case 0x000A: // FX0A
@@ -235,16 +282,19 @@ public:
 					case 0x0015: // FX15
 						// Set delay_timer to V[X]
 						delay_timer = V[(opcode & 0x0F00) >> 8];
+						pc += 2;
 					break;	
 			
 					case 0x0018: // FX18
 						// Set sound_timer to V[X]
 						sound_timer = V[(opcode & 0x0F00) >> 8];
+						pc += 2;
 					break;	
 			
 					case 0x001E: // FX1E
 						// Add V[X] to I
 						I += V[(opcode & 0x0F00) >> 8];
+						pc += 2;
 					break;
 			
 					case 0x0029: // FX29
